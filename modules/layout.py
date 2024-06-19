@@ -10,6 +10,7 @@ def format_ticker(ticker):
 
 def serve_layout():
     tickers = (environ.get("TICKERS") or "^SPX,^NDX,^RUT").strip().split(",")
+    print("tickers:", tickers)
     ticker_info = Ticker(tickers).quote_type
     return dbc.Container(
         [

@@ -59,42 +59,35 @@ def is_parsable(date):
         return False
 
 
-def format_data(data, today_ddt, tzinfo):
-    keys_to_keep = ["option", "iv", "open_interest", "delta", "gamma"]
+def format_data(data, today_ddt, tzinfo): 
+
+    keys_to_keep = ['ticker', 'side', 'strike_date', 'strike_price', 'open_interest','implied_volatility', 'delta', 'gamma']
     data = pd.DataFrame([{k: d[k] for k in keys_to_keep if k in d} for d in data])
-    data = pd.concat(
-        [
-            data.rename(
-                columns={
-                    "option": "calls",
-                    "iv": "call_iv",
-                    "open_interest": "call_open_int",
-                    "delta": "call_delta",
-                    "gamma": "call_gamma",
-                }
-            )
-            .iloc[0::2]
-            .reset_index(drop=True),
-            data.rename(
-                columns={
-                    "option": "puts",
-                    "iv": "put_iv",
-                    "open_interest": "put_open_int",
-                    "delta": "put_delta",
-                    "gamma": "put_gamma",
-                }
-            )
-            .iloc[1::2]
-            .reset_index(drop=True),
-        ],
-        axis=1,
-    )
-    data["strike_price"] = (
-        data["calls"].str.extract(r"\d[A-Z](\d+)\d\d\d").astype(float)
-    )
-    data["expiration_date"] = data["calls"].str.extract(r"[A-Z](\d+)")
+    calls = data[data['side'] == 'call']
+    puts = data[data['side'] == 'put']
+
+    calls = calls.rename(columns={
+        "implied_volatility": "call_iv",
+        "delta": "call_delta",
+        "gamma": "call_gamma",
+        "open_interest": "call_open_int",
+
+    })
+
+    puts = puts.rename(columns={
+        "implied_volatility": "put_iv",
+        "delta": "put_delta",
+        "gamma": "put_gamma",
+        "open_interest": "put_open_int",
+
+    })
+
+    data = pd.merge(calls, puts, on=['ticker', 'strike_date', 'strike_price'], suffixes=('_call', '_put'))
+
+    data.rename(columns={'strike_date': 'expiration_date'}, inplace=True)
+
     data["expiration_date"] = pd.to_datetime(
-        data["expiration_date"], format="%y%m%d"
+        data["expiration_date"], format="%Y-%m-%d"
     ).dt.tz_localize(tzinfo) + timedelta(hours=16)
 
     busday_counts = np.busday_count(
@@ -533,10 +526,14 @@ def get_options_data_json(ticker, expir, tz):
         print(f"{e}, {ticker} {expir} data is unavailable")
         return
 
-    # Get Spot
-    spot_price = data["data.current_price"][0].astype(float)
+    # Get Spot 
+    # api_change here -> close price recently
+    # spot_price = data["data.current_price"][0].astype(float)
+    print(ticker, expir, tz)
+    spot_price = data["latest_close_price"][0].astype(float)
 
     # Get Today's Date
+    # api_change here  timezone utc-> tz
     today_date = DateDataParser(
         settings={
             "TIMEZONE": "UTC",
@@ -545,11 +542,14 @@ def get_options_data_json(ticker, expir, tz):
         }
     ).get_date_data(str(data["timestamp"][0]))
     # Handle date formats
-    today_ddt = today_date.date_obj - timedelta(minutes=15)
-    today_ddt_string = today_ddt.strftime("%Y %b %d, %I:%M %p %Z") + " (15min delay)"
+    # today_ddt = today_date.date_obj - timedelta(minutes=15)
+    # today_ddt_string = today_ddt.strftime("%Y %b %d, %I:%M %p %Z") + " (15min delay)"
+    today_ddt = today_date.date_obj
+    today_ddt_string = today_ddt.strftime("%Y %b %d, %I:%M %p %Z") 
 
     option_data = format_data(
-        data["data.options"][0],
+        # data["data.options"][0],
+        data["options_data"][0],
         today_ddt,
         today_date.date_obj.tzinfo,
     )
